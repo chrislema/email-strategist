@@ -1,0 +1,29 @@
+{
+  "name": "email-strategist-mastra-agent",
+  "version": "0.1.0",
+  "description": "Idea in, graded email campaign out. Built on Mastra.",
+  "scripts": {
+    "dev": "mastra dev",
+    "build": "mastra build",
+    "setup": "tsx scripts/install-skills.ts",
+    "campaign": "tsx --env-file-if-exists=.env src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "@mastra/core": "^1.83.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "mastra": "^1.39.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  }
+}

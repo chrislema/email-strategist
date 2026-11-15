@@ -7,7 +7,7 @@ flagged, and present it only once it clears the bar (or hand back the list of fa
 | Folder | Built on | Status |
 |---|---|---|
 | [`claude-agent/`](claude-agent/) | Claude Agent SDK | v0.1 |
-| [`mastra-agent/`](mastra-agent/) | Mastra | next |
+| [`mastra-agent/`](mastra-agent/) | Mastra | v0.1 |
 
 ## Customer data
 
