@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createStep, createWorkflow } from "@mastra/core/workflows";
-import type { Agent } from "@mastra/core/agent";
 import { z } from "zod";
 import { config } from "../../lib/config";
 import { buildBrief, type Brief } from "../../lib/brief";
@@ -11,6 +10,8 @@ import { renderCampaign, renderNeeds, renderScorecard } from "../../lib/report";
 import { prepareHeroImages } from "../../lib/images";
 import { CampaignSchema, ReviewSchema, type Campaign } from "../../lib/schema";
 import { draftMessages, gradeMessages, reviseMessages } from "../prompts";
+import { generateStructured } from "../generate";
+import { renderCost, usageReport, type CallUsage, type UsageReport } from "../../lib/usage";
 
 /* ── helpers ──────────────────────────────────────────────────────────── */
 
@@ -22,51 +23,18 @@ const write = (dir: string, name: string, body: string | object) => {
   return p;
 };
 
-/** $/MTok (input, output) for cost estimates; unknown models report tokens only. */
-const PRICES: Record<string, [number, number]> = {
-  "anthropic/claude-opus-5-5": [4, 20],
-  "anthropic/claude-sonnet-5-5": [2, 10],
-  "anthropic/claude-haiku-5-5": [0.1, 0.5],
-};
-type Usage = { inputTokens: number; outputTokens: number; costUsd: number };
-const addUsage = (a: Usage, b: Usage): Usage => ({ inputTokens: a.inputTokens + b.inputTokens, outputTokens: a.outputTokens + b.outputTokens, costUsd: a.costUsd + b.costUsd });
-
-async function generateStructured<S extends z.ZodType>(
-  agent: Agent,
-  label: string,
-  messages: Parameters<Agent["generate"]>[0],
-  schema: S,
-  model: string,
-  effort: "low" | "medium" | "high" | "xhigh" | "max",
-): Promise<{ object: z.infer<S>; usage: Usage }> {
-  say(`  [${label}] generating with ${model}…`);
-  const res = await agent.generate(messages, {
-    maxSteps: 12,
-    // The campaign schema is too large for Anthropic's strict output grammar ("compiled grammar is too large"),
-    // so the schema goes in the prompt and Mastra validates the reply against it.
-    structuredOutput: { schema: schema as unknown as z.ZodObject<z.ZodRawShape>, jsonPromptInjection: true },
-    modelSettings: { maxOutputTokens: config.maxOutputTokens },
-    providerOptions: { anthropic: { thinking: { type: "adaptive" }, effort } },
-    onStepFinish: (event) => {
-      for (const t of event.toolCalls ?? []) {
-        const name = t.payload?.toolName;
-        const arg = (t.payload?.args as Record<string, unknown> | undefined)?.name as string | undefined;
-        say(`  [${label}] ${name}${arg ? ` ${arg}` : ""}`);
-      }
-    },
-  });
-  const parsed = schema.safeParse(res.object);
-  if (!parsed.success) throw new Error(`${label} returned output that doesn't match the schema: ${parsed.error.message.slice(0, 800)}`);
-  const u = (res.usage ?? {}) as { inputTokens?: number; outputTokens?: number };
-  const [pin, pout] = PRICES[model] ?? [0, 0];
-  const usage = { inputTokens: u.inputTokens ?? 0, outputTokens: u.outputTokens ?? 0, costUsd: ((u.inputTokens ?? 0) * pin + (u.outputTokens ?? 0) * pout) / 1e6 };
-  say(`  [${label}] done · ${usage.inputTokens.toLocaleString()} in / ${usage.outputTokens.toLocaleString()} out${PRICES[model] ? ` · ~$${usage.costUsd.toFixed(2)}` : ""}`);
-  return { object: parsed.data, usage };
+/** Record a call's usage and rewrite usage.json, so a run that dies midway still shows its spend. */
+function tracker(runDir: string, prior: CallUsage[]) {
+  const calls = [...prior];
+  const track = (u: CallUsage) => {
+    calls.push(u);
+    write(runDir, "usage.json", usageReport(calls));
+  };
+  return { calls, track };
 }
 
 /* ── schemas passed between steps ─────────────────────────────────────── */
 
-const UsageSchema = z.object({ inputTokens: z.number(), outputTokens: z.number(), costUsd: z.number() });
 const LoopSchema = z.object({
   idea: z.string(),
   maxRounds: z.number(),
@@ -77,7 +45,7 @@ const LoopSchema = z.object({
   scorecard: z.custom<Scorecard>().optional(),
   done: z.boolean(),
   stopReason: z.string(),
-  usage: UsageSchema,
+  calls: z.array(z.custom<CallUsage>()),
 });
 type Loop = z.infer<typeof LoopSchema>;
 
@@ -88,8 +56,8 @@ const ResultSchema = z.object({
   rounds: z.number(),
   history: z.array(z.number()),
   stopReason: z.string(),
-  usage: UsageSchema,
-  files: z.object({ campaign: z.string(), scorecard: z.string(), needs: z.string() }),
+  usage: z.custom<UsageReport["totals"]>(),
+  files: z.object({ campaign: z.string(), scorecard: z.string(), needs: z.string(), cost: z.string() }),
 });
 
 /* ── steps ────────────────────────────────────────────────────────────── */
@@ -109,8 +77,9 @@ const draft = createStep({
     say(`  hero images: ${images.map((i) => i.collection).join(", ") || "none"}`);
 
     say(`\n▸ Round 1 · writing`);
+    const { calls, track } = tracker(brief.runDir, []);
     const writer = mastra.getAgent("campaignWriter");
-    const { object, usage } = await generateStructured(writer, "writer", draftMessages(brief, inputData.idea, images), CampaignSchema, config.writerModel, config.writerEffort);
+    const { object } = await generateStructured(writer, "writer", draftMessages(brief, inputData.idea, images), CampaignSchema, config.writerModel, config.writerEffort, track);
     return {
       idea: inputData.idea,
       maxRounds: inputData.maxRounds ?? config.maxRounds,
@@ -120,7 +89,7 @@ const draft = createStep({
       history: [],
       done: false,
       stopReason: "",
-      usage,
+      calls,
     };
   },
 });
@@ -144,17 +113,17 @@ const reviewRound = createStep({
     say(`  ${checks.results.length} checks · ${fails.length} failed${fails.length ? `: ${[...new Set(fails.map((f) => `${f.scope}/${f.gate}`))].join(", ")}` : ""}`);
 
     say(`\n▸ Round ${s.round} · grading (independent reviewer)`);
+    const { calls, track } = tracker(s.brief.runDir, s.calls);
     const grader = mastra.getAgent("campaignGrader");
-    const graded = await generateStructured(grader, `grader r${s.round}`, gradeMessages(s.brief, s.campaign, checks, s.round), ReviewSchema, config.graderModel, config.graderEffort);
+    const graded = await generateStructured(grader, `grader r${s.round}`, gradeMessages(s.brief, s.campaign, checks, s.round), ReviewSchema, config.graderModel, config.graderEffort, track);
     write(dir, "review.json", graded.object);
-    let usage = addUsage(s.usage, graded.usage);
 
     const card = buildScorecard(s.campaign, checks, graded.object);
     const history = [...s.history, card.overallPct];
     write(dir, "scorecard.md", renderScorecard(card, s.round, history));
     say(`  ${card.status} · ${card.overallPct}%${history.length > 1 ? ` (${history.map((p) => `${p}%`).join(" → ")})` : ""}`);
 
-    const base = { ...s, scorecard: card, history, usage };
+    const base = { ...s, scorecard: card, history, calls };
     if (isDone(card)) return { ...base, done: true, stopReason: card.status === "CLIENT-READY" ? "Cleared the bar." : "Cleared the bar on everything it could; the rest needs facts." };
     const todo = fixNow(card);
     if (!todo.length) return { ...base, done: true, stopReason: "Nothing left the writer can fix; everything remaining needs a fact or your call." };
@@ -162,9 +131,8 @@ const reviewRound = createStep({
 
     say(`\n▸ Round ${s.round + 1} · fixing ${todo.length} item(s)`);
     const writer = mastra.getAgent("campaignWriter");
-    const revised = await generateStructured(writer, `writer r${s.round + 1}`, reviseMessages(s.brief, s.campaign, todo, s.round + 1), CampaignSchema, config.writerModel, config.writerEffort);
-    usage = addUsage(usage, revised.usage);
-    return { ...base, campaign: revised.object as Campaign, round: s.round + 1, usage, done: false };
+    const revised = await generateStructured(writer, `writer r${s.round + 1}`, reviseMessages(s.brief, s.campaign, todo, s.round + 1), CampaignSchema, config.writerModel, config.writerEffort, track);
+    return { ...base, campaign: revised.object as Campaign, round: s.round + 1, calls, done: false };
   },
 });
 
@@ -177,13 +145,15 @@ const present = createStep({
   execute: async ({ inputData: s }) => {
     const card = s.scorecard!;
     const final = path.join(s.brief.runDir, "final");
+    const report = usageReport(s.calls);
     const files = {
       campaign: write(final, "campaign.md", renderCampaign(s.campaign)),
       scorecard: write(final, "scorecard.md", renderScorecard(card, s.round, s.history)),
       needs: write(final, "needs.md", renderNeeds(s.campaign, card)),
+      cost: write(final, "cost.md", renderCost(report)),
     };
     write(final, "campaign.json", s.campaign);
-    const result = { runDir: s.brief.runDir, status: card.status, overallPct: card.overallPct, rounds: s.history.length, history: s.history, stopReason: s.stopReason, usage: s.usage, files };
+    const result = { runDir: s.brief.runDir, status: card.status, overallPct: card.overallPct, rounds: s.history.length, history: s.history, stopReason: s.stopReason, usage: report.totals, files };
     write(final, "summary.json", result);
     return result;
   },

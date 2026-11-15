@@ -1,7 +1,7 @@
 import { config, WRITER_SKILLS } from "../config.ts";
 import { CampaignSchema, type Campaign, type Fix } from "../schema.ts";
 import type { Brief } from "../brief.ts";
-import { runAgent } from "./run.ts";
+import { runAgent, type UsageSink } from "./run.ts";
 
 const SYSTEM = `
 You are the campaign writer for a direct-to-consumer product brand's email program.
@@ -25,7 +25,7 @@ Hard rules:
 - You are read-only: read the brief, brand guide, catalog and images, then return the campaign as structured output.
 `.trim();
 
-export async function draftCampaign(brief: Brief, idea: string) {
+export async function draftCampaign(brief: Brief, idea: string, onUsage?: UsageSink) {
   const prompt = `
 Use the ecommerce-holiday-email skill (and copywriting / offers where they help) to plan and write this:
 
@@ -53,10 +53,11 @@ status "SPEC TO COME" (they still go on the calendar). End with needs[] and open
     extraDirs: brief.readableDirs,
     hideReviewRubric: true,
     system: SYSTEM,
+    onUsage,
   });
 }
 
-export async function reviseCampaign(brief: Brief, campaign: Campaign, fixes: Fix[], round: number) {
+export async function reviseCampaign(brief: Brief, campaign: Campaign, fixes: Fix[], round: number, onUsage?: UsageSink) {
   const prompt = `
 A reviewer sent back round ${round} fixes. Make ONLY these changes. Don't rewrite lines that weren't flagged,
 keep every email id unchanged, and keep the same structure.
@@ -83,5 +84,6 @@ add it to needs[], and move on.
     extraDirs: brief.readableDirs,
     hideReviewRubric: true,
     system: SYSTEM,
+    onUsage,
   });
 }

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import type { Brief } from "../lib/brief";
 import type { CheckReport } from "../lib/checks";
 import type { Campaign, Fix } from "../lib/schema";
+import { config } from "../lib/config";
 import { renderCampaign } from "../lib/report";
 import type { PreparedImage } from "../lib/images";
 
@@ -20,15 +21,30 @@ function references(brief: Brief): string {
   ].join("\n");
 }
 
-type UserContent = ({ type: "text"; text: string } | { type: "image"; image: Buffer; mimeType: string })[];
+type CacheOptions = { anthropic: { cacheControl: { type: "ephemeral"; ttl: "5m" | "1h" } } };
+type Part = { type: "text"; text: string; providerOptions?: CacheOptions } | { type: "image"; image: Buffer; mimeType: string };
+
+/**
+ * Every call opens with the same references block, so it carries the explicit cache breakpoint: everything up to
+ * here (tools, instructions, injected schema, brief, brand guide) is identical across calls to the same agent.
+ * Anything that varies per call (images, fixes, the campaign, machine checks) comes after it.
+ */
+function referencesPart(brief: Brief): Part {
+  return {
+    type: "text",
+    text: references(brief),
+    ...(config.cache ? { providerOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: config.cachePrefixTtl } } } } : {}),
+  };
+}
+
+const userMessage = (content: Part[]) => [{ role: "user" as const, content }];
 
 export function draftMessages(brief: Brief, idea: string, images: PreparedImage[]) {
-  const content: UserContent = [
+  return userMessage([
+    referencesPart(brief),
     {
       type: "text",
-      text: `${references(brief)}
-
-Today is ${brief.today}.
+      text: `Today is ${brief.today}.
 
 IDEA: ${idea}
 
@@ -38,14 +54,15 @@ status "SPEC TO COME" (they still go on the calendar). End with needs[] and open
 ${images.length ? `\nThe images below are each collection's main artwork, in this order: ${images.map((i) => `"${i.collection}" (${i.file})`).join(", ")}. Use them for the look and feel of the print; refer to image files by these names.` : ""}`,
     },
     ...images.map((i) => ({ type: "image" as const, image: i.data, mimeType: i.mimeType })),
-  ];
-  return [{ role: "user" as const, content }];
+  ]);
 }
 
 export function reviseMessages(brief: Brief, campaign: Campaign, fixes: Fix[], round: number) {
-  return `${references(brief)}
-
-A reviewer sent back round ${round} fixes. Make ONLY these changes. Don't rewrite lines that weren't flagged,
+  return userMessage([
+    referencesPart(brief),
+    {
+      type: "text",
+      text: `A reviewer sent back round ${round} fixes. Make ONLY these changes. Don't rewrite lines that weren't flagged,
 keep every email id unchanged, and keep the same structure.
 
 FIXES (in priority order):
@@ -55,14 +72,18 @@ CURRENT CAMPAIGN (JSON):
 ${JSON.stringify(campaign, null, 2)}
 
 Return the full revised campaign. If a fix can't be made without a client fact, leave a [NEED: ...] marker,
-add it to needs[], and move on.`;
+add it to needs[], and move on.`,
+    },
+  ]);
 }
 
 export function gradeMessages(brief: Brief, campaign: Campaign, checks: CheckReport, round: number) {
   const machine = checks.results.map((r) => `- ${r.scope} ${r.gate}: ${r.result.toUpperCase()} · ${r.evidence.join(" ")}`).join("\n");
-  return `${references(brief)}
-
-Score this campaign with the Campaign rubric, then every email whose status is "spec" with the Email rubric.
+  return userMessage([
+    referencesPart(brief),
+    {
+      type: "text",
+      text: `Score this campaign with the Campaign rubric, then every email whose status is "spec" with the Email rubric.
 Skip "SPEC TO COME" emails (they count against Client-ready).
 
 MACHINE CHECKS (already verified in code; treat as fact, don't re-litigate them, but you may fail a gate the
@@ -79,5 +100,7 @@ exact draft.
 This is review round ${round}.
 
 THE WORK:
-${renderCampaign(campaign)}`;
+${renderCampaign(campaign)}`,
+    },
+  ]);
 }

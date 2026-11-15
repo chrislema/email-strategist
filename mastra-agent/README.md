@@ -46,7 +46,8 @@ npm test                                    # code-gate tests
 ```
 
 Output goes to `runs/<timestamp>-<idea>/` with the same layout as the Agent SDK build (`round-N/`, `final/`), plus
-`images/` with the hero images that were attached.
+`images/` with the hero images that were attached. `usage.json` (rewritten after every call) and `final/cost.md`
+break cost down per call and per step, counting every step (not just the last) and pricing cache reads and writes.
 
 Statuses (`CLIENT-READY`, `READY PENDING FACTS`, `NOT YET`, `NOT DELIVERABLE`) and the bar are the same as in the
 Agent SDK build. See its README.
@@ -61,5 +62,11 @@ Agent SDK build. See its README.
 | `EMAIL_MAX_ROUNDS` | `3` |
 | `EMAIL_MAX_OUTPUT_TOKENS` | `64000` |
 | `EMAIL_MAX_IMAGES` | `6` |
+| `EMAIL_CACHE` | `on` (`off` disables prompt caching, for cost comparisons) |
+| `EMAIL_CACHE_PREFIX_TTL` | `1h` (or `5m`) for the shared brief + brand-guide prefix |
+
+Prompt caching has two layers: automatic caching (5-minute TTL) re-reads earlier steps of a call from cache, and an
+explicit breakpoint after the brief and brand guide lets the next call to the same agent reuse tools, instructions,
+schema and references. It uses 1 hour because that next call starts after the other agent's whole call.
 
 Storage is in-memory (Mastra's default), so Studio history resets on restart. Add `@mastra/libsql` to keep it.

@@ -58,9 +58,13 @@ Each run writes `runs/<timestamp>-<idea>/` (git-ignored):
 
 ```
 brief.md, brand-guide.txt, intake.json
+usage.json  per-call tokens, turns, tool-result sizes (rewritten after every call)
 round-N/  campaign.json · campaign.md · checks.json · review.json · scorecard.md
-final/    campaign.md · scorecard.md · needs.md · campaign.json · summary.json
+final/    campaign.md · scorecard.md · needs.md · campaign.json · summary.json · cost.md
 ```
+
+`cost.md` breaks the SDK's cost estimate down per call (uncached input, cache read, cache write, output, thinking)
+and shows which tools pulled the most into context.
 
 ## Settings (env)
 

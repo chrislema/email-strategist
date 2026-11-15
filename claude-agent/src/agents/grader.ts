@@ -3,7 +3,7 @@ import { ReviewSchema, type Campaign } from "../schema.ts";
 import type { CheckReport } from "../checks.ts";
 import type { Brief } from "../brief.ts";
 import { renderCampaign } from "../report.ts";
-import { runAgent } from "./run.ts";
+import { runAgent, type UsageSink } from "./run.ts";
 
 const SYSTEM = `
 You are the reviewer, not the writer. You have never seen this work before. Be strict: a generous score now
@@ -12,7 +12,7 @@ Don't compute the overall percentage; the pipeline does that from your dimension
 You are read-only: read the brand guide and brief, then return the review as structured output.
 `.trim();
 
-export async function gradeCampaign(brief: Brief, campaign: Campaign, checks: CheckReport, round: number) {
+export async function gradeCampaign(brief: Brief, campaign: Campaign, checks: CheckReport, round: number, onUsage?: UsageSink) {
   const machine = checks.results
     .map((r) => `- ${r.scope} ${r.gate}: ${r.result.toUpperCase()} · ${r.evidence.join(" ")}`)
     .join("\n");
@@ -51,5 +51,6 @@ ${renderCampaign(campaign)}
     skills: GRADER_SKILLS,
     extraDirs: brief.readableDirs,
     system: SYSTEM,
+    onUsage,
   });
 }

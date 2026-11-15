@@ -8,6 +8,7 @@ import { gradeCampaign } from "./agents/grader.ts";
 import { buildScorecard, fixNow, isDone, type Scorecard } from "./score.ts";
 import { renderCampaign, renderNeeds, renderScorecard } from "./report.ts";
 import type { Campaign } from "./schema.ts";
+import { renderCost, usageReport, type CallUsage, type UsageReport } from "./usage.ts";
 
 export type RunResult = {
   runDir: string;
@@ -17,7 +18,8 @@ export type RunResult = {
   history: number[];
   stopReason: string;
   costUsd: number;
-  files: { campaign: string; scorecard: string; needs: string };
+  usage: UsageReport["totals"];
+  files: { campaign: string; scorecard: string; needs: string; cost: string };
 };
 
 const say = (msg: string) => process.stderr.write(`${msg}\n`);
@@ -41,10 +43,15 @@ export async function runCampaign(idea: string, opts: { factsPath?: string; maxR
   say(`  order-by: ${brief.orderBy.status === "computed" ? `${brief.orderBy.display} (${brief.orderBy.method})` : `BLOCKED: ${brief.orderBy.reason}`}`);
   say(`  catalog: ${brief.catalog.collections.map((c) => c.name).join(", ")}`);
 
-  let cost = 0;
+  // Every call's usage lands in usage.json as soon as it finishes, so a run that dies midway still shows its spend.
+  const calls: CallUsage[] = [];
+  const track = (u: CallUsage) => {
+    calls.push(u);
+    write(brief.runDir, "usage.json", usageReport(calls));
+  };
+
   say(`\n▸ Round 1 · writing`);
-  const draft = await draftCampaign(brief, idea);
-  cost += draft.costUsd;
+  const draft = await draftCampaign(brief, idea, track);
   let campaign: Campaign = draft.output;
 
   const history: number[] = [];
@@ -64,8 +71,7 @@ export async function runCampaign(idea: string, opts: { factsPath?: string; maxR
     say(`  ${checks.results.length} checks · ${fails.length} failed${fails.length ? `: ${[...new Set(fails.map((f) => `${f.scope}/${f.gate}`))].join(", ")}` : ""}`);
 
     say(`\n▸ Round ${round} · grading (independent reviewer)`);
-    const graded = await gradeCampaign(brief, campaign, checks, round);
-    cost += graded.costUsd;
+    const graded = await gradeCampaign(brief, campaign, checks, round, track);
     write(dir, "review.json", graded.output);
 
     card = buildScorecard(campaign, checks, graded.output);
@@ -87,19 +93,20 @@ export async function runCampaign(idea: string, opts: { factsPath?: string; maxR
       break;
     }
     say(`\n▸ Round ${round + 1} · fixing ${todo.length} item(s)`);
-    const revised = await reviseCampaign(brief, campaign, todo, round + 1);
-    cost += revised.costUsd;
+    const revised = await reviseCampaign(brief, campaign, todo, round + 1, track);
     campaign = revised.output;
   }
 
   const final = path.join(brief.runDir, "final");
+  const report = usageReport(calls);
   const files = {
     campaign: write(final, "campaign.md", renderCampaign(campaign)),
     scorecard: write(final, "scorecard.md", renderScorecard(card, Math.min(round, maxRounds), history)),
     needs: write(final, "needs.md", renderNeeds(campaign, card)),
+    cost: write(final, "cost.md", renderCost(report)),
   };
   write(final, "campaign.json", campaign);
-  const result: RunResult = { runDir: brief.runDir, status: card.status, overallPct: card.overallPct, rounds: history.length, history, stopReason, costUsd: cost, files };
+  const result: RunResult = { runDir: brief.runDir, status: card.status, overallPct: card.overallPct, rounds: history.length, history, stopReason, costUsd: report.totals.costUsd, usage: report.totals, files };
   write(final, "summary.json", result);
   return result;
 }

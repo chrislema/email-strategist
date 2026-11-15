@@ -66,6 +66,7 @@ console.log(`
  Campaign:  ${r.files.campaign}
  Scorecard: ${r.files.scorecard}
  Needs:     ${r.files.needs}
- Tokens:    ${r.usage.inputTokens.toLocaleString()} in / ${r.usage.outputTokens.toLocaleString()} out · est. $${r.usage.costUsd.toFixed(2)}
+ Cost:      ${r.files.cost}
+ Est. cost: $${r.usage.costUsd.toFixed(2)} · ${r.usage.calls} calls · ${r.usage.steps} steps · ${r.usage.cacheRead.toLocaleString()} cache read / ${r.usage.cacheWrite.toLocaleString()} cache write / ${r.usage.input.toLocaleString()} in / ${r.usage.output.toLocaleString()} out
 ══════════════════════════════════════════`);
 process.exit(0);

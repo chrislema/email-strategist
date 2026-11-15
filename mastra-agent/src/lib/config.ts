@@ -39,6 +39,15 @@ export const config = {
   /** Product photos attached to the writer's first draft (one hero per featured collection). */
   maxImages: Number(env.EMAIL_MAX_IMAGES ?? 6),
 
+  /**
+   * Prompt caching. Two layers: automatic caching (5-minute TTL) for the context that grows step to step inside
+   * one call, plus an explicit breakpoint after the brief + brand guide so the next call to the same agent reuses
+   * tools + instructions + schema + references. That next call starts after the other agent's whole call, usually
+   * more than 5 minutes later, hence the 1-hour default. EMAIL_CACHE=off disables both (for A/B cost comparisons).
+   */
+  cache: (env.EMAIL_CACHE ?? "on") !== "off",
+  cachePrefixTtl: (env.EMAIL_CACHE_PREFIX_TTL === "5m" ? "5m" : "1h") as "5m" | "1h",
+
   maxRounds: Number(env.EMAIL_MAX_ROUNDS ?? 3),
   bar: { overallPct: 80, minDimension: 3, minorGateCapPct: 60 },
 };
