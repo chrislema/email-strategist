@@ -43,7 +43,10 @@ function mergeGate(gate: string, scope: string, checks: CheckReport, grader?: { 
     gate,
     result: worst,
     critical,
-    evidence: [...code.evidence, ...(grader.result !== "pass" ? [`Grader: ${grader.quote} ${grader.note}`.trim()] : [])],
+    evidence:
+      grader.result !== "pass" && code.result === "pass"
+        ? [`Grader caught what code can't: ${grader.quote} ${grader.note}`.trim()]
+        : [...code.evidence, ...(grader.result !== "pass" ? [`Grader: ${grader.quote} ${grader.note}`.trim()] : [])],
     decidedBy: "both",
   };
 }
@@ -107,7 +110,8 @@ export function buildScorecard(campaign: Campaign, checks: CheckReport, review: 
     return true;
   });
   // Blocked gates are fact gaps, never something the writer can fix.
-  for (const it of items) for (const g of it.gates) if (g.result === "blocked") fixes.push({ where: `${it.label}: ${g.gate}`, change: g.evidence.join(" "), type: "needs_fact", points: 0 });
+  const graderNeeds = review.fixes.filter((f) => f.type === "needs_fact").map((f) => `${f.where} ${f.change}`).join(" ");
+  for (const it of items) for (const g of it.gates) if (g.result === "blocked" && !graderNeeds.includes(`(${g.gate})`)) fixes.push({ where: `${it.label}: ${g.gate}`, change: g.evidence.join(" "), type: "needs_fact", points: 0 });
   const order = { fix_now: 0, needs_fact: 1, your_call: 2 } as const;
   fixes.sort((a, b) => order[a.type] - order[b.type] || b.points - a.points);
 

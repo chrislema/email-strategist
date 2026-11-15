@@ -28,6 +28,8 @@ Hard rules:
   (inventoryNotes[i], proofPoints[i], drops[i], offer, orderBy) or "NEED".
 - Use the computed order-by date exactly as given. If it is BLOCKED, write [NEED: order-by date] instead of a date.
 - If the offer isn't decided, don't state a deal: write [NEED: offer] and keep the copy offer-agnostic.
+- No inventoryNotes in the facts means no low-stock, "last sizes" or "selling out" copy in any wording. A low-stock
+  email can sit on the calendar as status "SPEC TO COME" (conditional on inventory), never as written copy.
 - Every deadline gets a time and a time zone ("11:59 PM ET"), never "midnight".
 - Mark every assumption [ASSUMED: ...] in the copy and list it in assumptions[].
 - Don't stop to ask questions. Finish everything you can, and list what you need in needs[] and openDecisions[].

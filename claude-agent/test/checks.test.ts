@@ -129,3 +129,19 @@ test("scorecard: grader can't pass a gate the code failed; blocked-only work is 
   const held = campaign([{ ...good, body: [{ section: "Hero", copy: "Something special is coming [NEED: offer].", image: "" }] }]);
   assert.equal(buildScorecard(held, runChecks(held, undecided, orderBy, catalog), review("blocked")).status, "READY PENDING FACTS");
 });
+
+test("questions answered right away fail E4 (same line only; a question subject followed by a preview is fine)", () => {
+  const q = { ...good, body: [{ section: "Help", copy: "Between sizes? Size up for room to grow.", image: "" }] };
+  assert.equal(gate(runChecks(campaign([q]), facts, orderBy, catalog), "E1", "E4"), "fail");
+  const subj = { ...good, subjectOptions: [{ text: "Ready for snow?", why: "" }] };
+  assert.equal(gate(runChecks(campaign([subj]), facts, orderBy, catalog), "E1", "E4"), "pass");
+});
+
+test("blocked gates never become Fix Now items", () => {
+  const undecided = FactsSchema.parse({ ...facts, offer: "help me decide", handlingDays: "not sure" });
+  const held = { ...good, subcopy: "Our print just landed. Order by [NEED: order-by date] for Christmas.", body: [{ section: "Hero", copy: "Something special is coming [NEED: offer].", image: "" }] };
+  const r = runChecks({ ...campaign([held]), type: "season_plan" }, undecided, computeOrderBy(undecided), catalog);
+  assert.equal(gate(r, "campaign", "C2"), "blocked");
+  assert.equal(gate(r, "campaign", "C3"), "blocked");
+  assert.deepEqual(r.fixes.filter((f) => /dates|offer/.test(f.where)), []);
+});

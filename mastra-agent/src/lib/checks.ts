@@ -23,6 +23,7 @@ const BANNED: { name: string; re: RegExp }[] = [
   { name: '"not just X, but Y"', re: /\bnot just\b[^.!?]{1,60}\bbut\b/i },
   { name: '"no X, no Y, no Z" list', re: /\bno\s+[\w'’-]+,\s*no\s+[\w'’-]+,\s*(?:and\s+)?no\s+[\w'’-]+/i },
   { name: "self-answered question", re: /\b(?:the|and the)\s+(?:result|best part|secret|answer|catch|kicker|twist)\?/i },
+  { name: "question answered right away", re: /(?:^|[.!?]\s+|\n)[A-Z][^.!?\n]{1,80}\?[ \t]+(?=[A-Z\[])/ },
   { name: '"say goodbye to"', re: /\bsay goodbye to\b/i },
   { name: '"unlock"', re: /\bunlock(?:s|ed|ing)?\b/i },
   { name: '"take it to the next level"', re: /\bnext level\b/i },
@@ -67,7 +68,7 @@ function monthDay(raw: string): string | null {
 
 function push(results: CheckResult[], fixes: Fix[], r: CheckResult, fix?: Omit<Fix, "type"> & { type?: Fix["type"] }) {
   results.push(r);
-  if (fix && r.result !== "pass") fixes.push({ type: "fix_now", ...fix } as Fix);
+  if (fix && r.result === "fail") fixes.push({ type: "fix_now", ...fix } as Fix);
 }
 
 export function runChecks(c: Campaign, facts: Facts, orderBy: OrderBy, catalog: Catalog): CheckReport {
@@ -208,7 +209,7 @@ export function runChecks(c: Campaign, facts: Facts, orderBy: OrderBy, catalog: 
     const hits: string[] = [];
     for (const b of BANNED) {
       const m = text.match(b.re);
-      if (m) hits.push(`${b.name}: "${m[0].trim()}"`);
+      if (m) hits.push(`${b.name}: "${m[0].replace(/^[\s.!?]+/, "").trim()}"`);
     }
     for (const s of [...e.subjectOptions.map((x) => x.text), e.preview]) if (/[—–]/.test(s)) hits.push(`dash in subject/preview: "${s}"`);
     push(
