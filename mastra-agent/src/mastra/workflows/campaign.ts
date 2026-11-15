@@ -42,9 +42,11 @@ async function generateStructured<S extends z.ZodType>(
   say(`  [${label}] generating with ${model}…`);
   const res = await agent.generate(messages, {
     maxSteps: 12,
-    structuredOutput: { schema: schema as unknown as z.ZodObject<z.ZodRawShape> },
+    // The campaign schema is too large for Anthropic's strict output grammar ("compiled grammar is too large"),
+    // so the schema goes in the prompt and Mastra validates the reply against it.
+    structuredOutput: { schema: schema as unknown as z.ZodObject<z.ZodRawShape>, jsonPromptInjection: true },
     modelSettings: { maxOutputTokens: config.maxOutputTokens },
-    providerOptions: { anthropic: { thinking: { type: "adaptive" }, effort, structuredOutputMode: "outputFormat" } },
+    providerOptions: { anthropic: { thinking: { type: "adaptive" }, effort } },
     onStepFinish: (event) => {
       for (const t of event.toolCalls ?? []) {
         const name = t.payload?.toolName;
