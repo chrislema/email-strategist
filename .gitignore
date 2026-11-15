@@ -1,0 +1,25 @@
+# This repo is PUBLIC. Customer data is never committed or pushed.
+# Allowlist: everything at the root is ignored except the code folders below,
+# so any client file dropped into this folder stays out of git automatically.
+/*
+!/.gitignore
+!/README.md
+!/claude-agent/
+!/mastra-agent/
+
+# Inside the agent folders: client facts, installed (client-specific) skills,
+# and every generated campaign, scorecard and transcript stay local.
+**/client/
+**/runs/
+**/.claude/skills/
+**/facts.json
+
+# Build / env
+node_modules/
+dist/
+.mastra/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store

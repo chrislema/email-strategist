@@ -1,0 +1,27 @@
+{
+  "name": "email-strategist-claude-agent",
+  "version": "0.1.0",
+  "description": "Idea in, graded email campaign out. Built on the Claude Agent SDK.",
+  "scripts": {
+    "setup": "tsx scripts/install-skills.ts",
+    "campaign": "tsx src/cli.ts",
+    "check": "tsx src/check-cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.325",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

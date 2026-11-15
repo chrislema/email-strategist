@@ -1,0 +1,21 @@
+{
+  "brand": "Your Brand",
+  "platform": "Mailchimp",
+  "listSize": "not sure",
+  "engaged90d": "not sure",
+  "offer": "help me decide",
+  "grossMarginPct": "not sure",
+  "collections": [],
+  "handlingDays": 1,
+  "carrier": "not sure",
+  "bufferDays": 1,
+  "sendsSms": "not sure",
+  "aov": "not sure",
+  "timezone": "ET",
+  "drops": [],
+  "inventoryNotes": [],
+  "proofPoints": [],
+  "skuTypes": {},
+  "brandRules": { "headlineWords": [4, 7], "ctaCount": [1, 2] },
+  "notes": "Anything unknown can stay \"not sure\": the writer marks it [ASSUMED] or [NEED] and the run hands you a list instead of guessing."
+}
